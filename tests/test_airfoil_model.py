@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import LinearRegression
 
-from src.airfoil_utils import (
+from src.Airfoil_Functions import (
     FEATURE_COLUMNS,
     evaluate_loco,
     validate_airfoil_input,
