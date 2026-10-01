@@ -1,197 +1,156 @@
-{
-  "nbformat": 4,
-  "nbformat_minor": 0,
-  "metadata": {
-    "colab": {
-      "provenance": [],
-      "toc_visible": true,
-      "authorship_tag": "ABX9TyOtApm0VsmUmt3G5x0/OkpX",
-      "include_colab_link": true
-    },
-    "kernelspec": {
-      "name": "python3",
-      "display_name": "Python 3"
-    },
-    "language_info": {
-      "name": "python"
-    }
-  },
-  "cells": [
-    {
-      "cell_type": "markdown",
-      "metadata": {
-        "id": "view-in-github",
-        "colab_type": "text"
-      },
-      "source": [
-        "<a href=\"https://colab.research.google.com/github/lkoc0002/MMA3001-Airfoil_Self_Noise_Project/blob/main/src/Airfoil_Functions.ipynb\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
-      ]
-    },
-    {
-      "cell_type": "code",
-      "source": [
-        "\"\"\"Utility functions for the Airfoil Self-Noise Prediction project.\n",
-        "\n",
-        "This module contains reusable functions used for model validation and\n",
-        "input checking in the airfoil self-noise machine-learning workflow.\n",
-        "\"\"\"\n",
-        "\n",
-        "import numpy as np\n",
-        "import pandas as pd\n",
-        "\n",
-        "from sklearn.base import clone\n",
-        "from sklearn.metrics import (\n",
-        "    mean_absolute_error,\n",
-        "    mean_squared_error,\n",
-        "    r2_score,\n",
-        ")\n",
-        "from sklearn.model_selection import LeaveOneGroupOut\n",
-        "\n",
-        "\n",
-        "FEATURE_COLUMNS = [\n",
-        "    \"frequency\",\n",
-        "    \"angle_of_attack\",\n",
-        "    \"chord_length\",\n",
-        "    \"free_stream_velocity\",\n",
-        "    \"displacement_thickness\",\n",
-        "]\n",
-        "\n",
-        "\n",
-        "def evaluate_loco(model, X, y, groups):\n",
-        "    \"\"\"Evaluate a regression model using leave-one-chord-out validation.\n",
-        "\n",
-        "    Parameters\n",
-        "    ----------\n",
-        "    model : sklearn estimator\n",
-        "        Regression model to evaluate.\n",
-        "    X : pandas.DataFrame\n",
-        "        Predictor variables used by the regression model.\n",
-        "    y : pandas.Series\n",
-        "        Sound pressure level target values.\n",
-        "    groups : array-like\n",
-        "        Chord length associated with each observation.\n",
-        "\n",
-        "    Returns\n",
-        "    -------\n",
-        "    pandas.DataFrame\n",
-        "        Training and validation performance for each withheld chord.\n",
-        "    \"\"\"\n",
-        "    logo = LeaveOneGroupOut()\n",
-        "    results = []\n",
-        "\n",
-        "    for train_index, validation_index in logo.split(X, y, groups):\n",
-        "        X_train = X.iloc[train_index]\n",
-        "        X_validation = X.iloc[validation_index]\n",
-        "\n",
-        "        y_train = y.iloc[train_index]\n",
-        "        y_validation = y.iloc[validation_index]\n",
-        "\n",
-        "        fitted_model = clone(model)\n",
-        "        fitted_model.fit(X_train, y_train)\n",
-        "\n",
-        "        train_predictions = fitted_model.predict(X_train)\n",
-        "        validation_predictions = fitted_model.predict(X_validation)\n",
-        "\n",
-        "        withheld_chord = np.asarray(groups)[validation_index][0]\n",
-        "\n",
-        "        results.append({\n",
-        "            \"Withheld Chord\": withheld_chord,\n",
-        "            \"Train RMSE\": np.sqrt(\n",
-        "                mean_squared_error(y_train, train_predictions)\n",
-        "            ),\n",
-        "            \"MAE\": mean_absolute_error(\n",
-        "                y_validation,\n",
-        "                validation_predictions,\n",
-        "            ),\n",
-        "            \"RMSE\": np.sqrt(\n",
-        "                mean_squared_error(\n",
-        "                    y_validation,\n",
-        "                    validation_predictions,\n",
-        "                )\n",
-        "            ),\n",
-        "            \"R2\": r2_score(\n",
-        "                y_validation,\n",
-        "                validation_predictions,\n",
-        "            ),\n",
-        "        })\n",
-        "\n",
-        "    return pd.DataFrame(results)\n",
-        "\n",
-        "\n",
-        "def validate_airfoil_input(input_data, reference_data):\n",
-        "    \"\"\"Validate airfoil inputs before model prediction.\n",
-        "\n",
-        "    Parameters\n",
-        "    ----------\n",
-        "    input_data : pandas.DataFrame\n",
-        "        Predictor values to be supplied to the regression model.\n",
-        "    reference_data : pandas.DataFrame\n",
-        "        Experimental dataset used to determine the supported input ranges.\n",
-        "\n",
-        "    Returns\n",
-        "    -------\n",
-        "    bool\n",
-        "        True when all predictor values pass validation.\n",
-        "\n",
-        "    Raises\n",
-        "    ------\n",
-        "    ValueError\n",
-        "        If required predictors are missing, contain non-finite values,\n",
-        "        are physically invalid, or fall outside the experimental range.\n",
-        "    \"\"\"\n",
-        "    # Check that every predictor required by the model is present.\n",
-        "    missing_columns = [\n",
-        "        column for column in FEATURE_COLUMNS\n",
-        "        if column not in input_data.columns\n",
-        "    ]\n",
-        "\n",
-        "    if missing_columns:\n",
-        "        raise ValueError(\n",
-        "            f\"Missing required predictors: {missing_columns}\"\n",
-        "        )\n",
-        "\n",
-        "    predictor_data = input_data[FEATURE_COLUMNS]\n",
-        "\n",
-        "    # Reject NaN and infinite values supplied for prediction.\n",
-        "    if not np.isfinite(predictor_data.to_numpy()).all():\n",
-        "        raise ValueError(\n",
-        "            \"Prediction inputs must contain finite numerical values.\"\n",
-        "        )\n",
-        "\n",
-        "    # Frequency, chord length, velocity and thickness cannot be negative.\n",
-        "    positive_features = [\n",
-        "        \"frequency\",\n",
-        "        \"chord_length\",\n",
-        "        \"free_stream_velocity\",\n",
-        "        \"displacement_thickness\",\n",
-        "    ]\n",
-        "\n",
-        "    if (predictor_data[positive_features] < 0).any().any():\n",
-        "        raise ValueError(\n",
-        "            \"Physical predictor values cannot be negative.\"\n",
-        "        )\n",
-        "\n",
-        "    # Reject extrapolation beyond the experimental domain.\n",
-        "    for feature in FEATURE_COLUMNS:\n",
-        "        minimum = reference_data[feature].min()\n",
-        "        maximum = reference_data[feature].max()\n",
-        "\n",
-        "        if (\n",
-        "            (predictor_data[feature] < minimum).any()\n",
-        "            or (predictor_data[feature] > maximum).any()\n",
-        "        ):\n",
-        "            raise ValueError(\n",
-        "                f\"{feature} must be within the experimental range \"\n",
-        "                f\"[{minimum}, {maximum}].\"\n",
-        "            )\n",
-        "\n",
-        "    return True"
-      ],
-      "metadata": {
-        "id": "WCxrYFraPtIA"
-      },
-      "execution_count": 1,
-      "outputs": []
-    }
-  ]
-}
+"""Utility functions for the Airfoil Self-Noise Prediction project.
+
+This module contains reusable functions used for model validation and
+input checking in the airfoil self-noise machine-learning workflow.
+"""
+
+import numpy as np
+import pandas as pd
+
+from sklearn.base import clone
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
+)
+from sklearn.model_selection import LeaveOneGroupOut
+
+
+FEATURE_COLUMNS = [
+    "frequency",
+    "angle_of_attack",
+    "chord_length",
+    "free_stream_velocity",
+    "displacement_thickness",
+]
+
+
+def evaluate_loco(model, X, y, groups):
+    """Evaluate a regression model using leave-one-chord-out validation.
+
+    Parameters
+    ----------
+    model : sklearn estimator
+        Regression model to evaluate.
+    X : pandas.DataFrame
+        Predictor variables used by the regression model.
+    y : pandas.Series
+        Sound pressure level target values.
+    groups : array-like
+        Chord length associated with each observation.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Training and validation performance for each withheld chord.
+    """
+    logo = LeaveOneGroupOut()
+    results = []
+
+    for train_index, validation_index in logo.split(X, y, groups):
+        X_train = X.iloc[train_index]
+        X_validation = X.iloc[validation_index]
+
+        y_train = y.iloc[train_index]
+        y_validation = y.iloc[validation_index]
+
+        fitted_model = clone(model)
+        fitted_model.fit(X_train, y_train)
+
+        train_predictions = fitted_model.predict(X_train)
+        validation_predictions = fitted_model.predict(X_validation)
+
+        withheld_chord = np.asarray(groups)[validation_index][0]
+
+        results.append({
+            "Withheld Chord": withheld_chord,
+            "Train RMSE": np.sqrt(
+                mean_squared_error(y_train, train_predictions)
+            ),
+            "MAE": mean_absolute_error(
+                y_validation,
+                validation_predictions,
+            ),
+            "RMSE": np.sqrt(
+                mean_squared_error(
+                    y_validation,
+                    validation_predictions,
+                )
+            ),
+            "R2": r2_score(
+                y_validation,
+                validation_predictions,
+            ),
+        })
+
+    return pd.DataFrame(results)
+
+
+def validate_airfoil_input(input_data, reference_data):
+    """Validate airfoil inputs before model prediction.
+
+    Parameters
+    ----------
+    input_data : pandas.DataFrame
+        Predictor values to be supplied to the regression model.
+    reference_data : pandas.DataFrame
+        Experimental dataset used to determine the supported input ranges.
+
+    Returns
+    -------
+    bool
+        True when all predictor values pass validation.
+
+    Raises
+    ------
+    ValueError
+        If required predictors are missing, contain non-finite values,
+        are physically invalid, or fall outside the experimental range.
+    """
+    # Check that every predictor required by the model is present.
+    missing_columns = [
+        column for column in FEATURE_COLUMNS
+        if column not in input_data.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            f"Missing required predictors: {missing_columns}"
+        )
+
+    predictor_data = input_data[FEATURE_COLUMNS]
+
+    # Reject NaN and infinite values supplied for prediction.
+    if not np.isfinite(predictor_data.to_numpy()).all():
+        raise ValueError(
+            "Prediction inputs must contain finite numerical values."
+        )
+
+    # Frequency, chord length, velocity and thickness cannot be negative.
+    positive_features = [
+        "frequency",
+        "chord_length",
+        "free_stream_velocity",
+        "displacement_thickness",
+    ]
+
+    if (predictor_data[positive_features] < 0).any().any():
+        raise ValueError(
+            "Physical predictor values cannot be negative."
+        )
+
+    # Reject extrapolation beyond the experimental domain.
+    for feature in FEATURE_COLUMNS:
+        minimum = reference_data[feature].min()
+        maximum = reference_data[feature].max()
+
+        if (
+            (predictor_data[feature] < minimum).any()
+            or (predictor_data[feature] > maximum).any()
+        ):
+            raise ValueError(
+                f"{feature} must be within the experimental range "
+                f"[{minimum}, {maximum}]."
+            )
+
+    return True
