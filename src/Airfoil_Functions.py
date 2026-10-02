@@ -28,22 +28,30 @@ FEATURE_COLUMNS = [
 def evaluate_loco(model, X, y, groups):
     """Evaluate a regression model using leave-one-chord-out validation.
 
+    Each unique chord length is withheld once while the model is fitted
+    using observations from all remaining chord lengths. A fresh clone
+    of the estimator is fitted for each validation fold.
+
     Parameters
     ----------
     model : sklearn estimator
-        Regression model to evaluate.
+        Scikit-learn compatible regression estimator or pipeline.
     X : pandas.DataFrame
-        Predictor variables used by the regression model.
+        Predictor variables used for model training and validation.
     y : pandas.Series
         Sound pressure level target values.
     groups : array-like
-        Chord length associated with each observation.
+        Chord length associated with each observation. Observations with
+        the same chord length are withheld together.
 
     Returns
     -------
     pandas.DataFrame
-        Training and validation performance for each withheld chord.
+        Performance metrics for each withheld chord. Columns contain
+        the withheld chord length, training RMSE, validation MAE,
+        validation RMSE and validation R-squared.
     """
+    
     logo = LeaveOneGroupOut()
     results = []
 
@@ -85,7 +93,38 @@ def evaluate_loco(model, X, y, groups):
 
     return pd.DataFrame(results)
 
+def median_ms(function, repeats=20):
+    """Measure the median execution time of a callable.
 
+    Parameters
+    ----------
+    function : callable
+        Function with no required arguments to execute and time.
+    repeats : int, default=20
+        Number of repeated timing measurements.
+
+    Returns
+    -------
+    float
+        Median execution time in milliseconds.
+
+    Raises
+    ------
+    ValueError
+        If ``repeats`` is less than one.
+    """
+    if repeats < 1:
+        raise ValueError("repeats must be at least 1.")
+
+    times = []
+
+    for _ in range(repeats):
+        start = time.perf_counter()
+        function()
+        times.append(time.perf_counter() - start)
+
+    return 1000 * np.median(times)
+    
 def validate_airfoil_input(input_data, reference_data):
     """Validate airfoil inputs before model prediction.
 
@@ -126,7 +165,7 @@ def validate_airfoil_input(input_data, reference_data):
             "Prediction inputs must contain finite numerical values."
         )
 
-    # Frequency, chord length, velocity and thickness cannot be negative.
+    # Frequency, chord length, velocity and thickness must be positive.
     positive_features = [
         "frequency",
         "chord_length",
@@ -134,7 +173,7 @@ def validate_airfoil_input(input_data, reference_data):
         "displacement_thickness",
     ]
 
-    if (predictor_data[positive_features] < 0).any().any():
+    if (predictor_data[positive_features] <= 0).any().any():
         raise ValueError(
             "Physical predictor values cannot be negative."
         )
