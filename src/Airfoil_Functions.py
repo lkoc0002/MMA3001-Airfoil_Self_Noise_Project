@@ -175,8 +175,8 @@ def validate_airfoil_input(input_data, reference_data):
     ]
 
     if (predictor_data[positive_features] <= 0).any().any():
-    raise ValueError(
-        "Physical predictor values must be greater than zero."
+        raise ValueError(
+            "Physical predictor values must be greater than zero."
     )
 
     # Reject extrapolation beyond the experimental domain.
