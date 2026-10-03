@@ -10,6 +10,7 @@ from sklearn.linear_model import LinearRegression
 from src.Airfoil_Functions import (
     FEATURE_COLUMNS,
     evaluate_loco,
+    median_ms,
     validate_airfoil_input,
 )
 
@@ -42,7 +43,8 @@ def airfoil_data():
     Returns
     -------
     pandas.DataFrame
-        Dataset containing the five predictors and SPL target.
+        Dataset containing the five predictor variables and sound
+        pressure level target.
     """
     return pd.read_csv(
         DATA_PATH,
@@ -53,12 +55,13 @@ def airfoil_data():
 
 @pytest.fixture
 def valid_input():
-    """Return one valid prediction input within the experimental domain.
+    """Create one valid prediction input within the experimental domain.
 
     Returns
     -------
     pandas.DataFrame
-        Single valid set of airfoil predictor values.
+        Single observation containing valid values for all required
+        airfoil predictor variables.
     """
     return pd.DataFrame({
         "frequency": [1000.0],
@@ -74,17 +77,53 @@ def valid_input():
 # ---------------------------------------------------------------------
 
 def test_dataset_shape(airfoil_data):
-    """Verify that the complete dataset has the expected dimensions."""
+    """Test that the dataset has the expected dimensions.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Airfoil Self-Noise dataset supplied by the pytest fixture.
+
+    Returns
+    -------
+    None
+        This test passes if the dataset contains 1,503 observations
+        and six columns.
+    """
     assert airfoil_data.shape == (1503, 6)
 
 
 def test_dataset_columns(airfoil_data):
-    """Verify that the dataset contains the expected variables."""
+    """Test that the dataset contains the expected variables.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Airfoil Self-Noise dataset supplied by the pytest fixture.
+
+    Returns
+    -------
+    None
+        This test passes if the dataset columns match the expected
+        predictor and target variable names.
+    """
     assert list(airfoil_data.columns) == COLUMN_NAMES
 
 
 def test_dataset_has_no_missing_values(airfoil_data):
-    """Verify the documented absence of missing dataset values."""
+    """Test that the dataset contains no missing values.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Airfoil Self-Noise dataset supplied by the pytest fixture.
+
+    Returns
+    -------
+    None
+        This test passes if no missing values are present in the
+        dataset.
+    """
     assert not airfoil_data.isna().any().any()
 
 
@@ -95,7 +134,19 @@ def test_dataset_has_no_missing_values(airfoil_data):
 def test_withheld_chord_is_excluded_from_development_data(
     airfoil_data,
 ):
-    """Verify that the final test chord is excluded from development data."""
+    """Test that the final test chord is excluded from development data.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Airfoil Self-Noise dataset supplied by the pytest fixture.
+
+    Returns
+    -------
+    None
+        This test passes if the 0.1524 m chord is absent from the
+        development data and all test observations belong to that chord.
+    """
     test_mask = np.isclose(
         airfoil_data["chord_length"],
         TEST_CHORD,
@@ -116,7 +167,19 @@ def test_withheld_chord_is_excluded_from_development_data(
 
 
 def test_development_and_test_sizes(airfoil_data):
-    """Verify the expected chord-based development and test sizes."""
+    """Test the expected chord-based development and test set sizes.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Airfoil Self-Noise dataset supplied by the pytest fixture.
+
+    Returns
+    -------
+    None
+        This test passes if the development set contains 1,232
+        observations and the withheld test set contains 271 observations.
+    """
     test_mask = np.isclose(
         airfoil_data["chord_length"],
         TEST_CHORD,
@@ -131,7 +194,20 @@ def test_development_and_test_sizes(airfoil_data):
 # ---------------------------------------------------------------------
 
 def test_valid_input_is_accepted(airfoil_data, valid_input):
-    """Verify that valid predictor values pass input validation."""
+    """Test that valid predictor values pass input validation.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Reference experimental dataset used to determine valid ranges.
+    valid_input : pandas.DataFrame
+        Valid predictor values supplied by the pytest fixture.
+
+    Returns
+    -------
+    None
+        This test passes if validation returns ``True`` for valid input.
+    """
     assert validate_airfoil_input(
         valid_input,
         airfoil_data,
@@ -142,7 +218,21 @@ def test_missing_predictor_is_rejected(
     airfoil_data,
     valid_input,
 ):
-    """Verify that an input with a missing predictor is rejected."""
+    """Test that an input with a missing predictor is rejected.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Reference experimental dataset used to determine valid ranges.
+    valid_input : pandas.DataFrame
+        Valid predictor values used to construct the invalid input.
+
+    Returns
+    -------
+    None
+        This test passes if a ``ValueError`` is raised when a required
+        predictor is missing.
+    """
     invalid_input = valid_input.drop(
         columns=["frequency"]
     )
@@ -158,7 +248,21 @@ def test_missing_predictor_is_rejected(
 
 
 def test_nan_input_is_rejected(airfoil_data, valid_input):
-    """Verify that NaN predictor values are rejected."""
+    """Test that non-finite predictor values are rejected.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Reference experimental dataset used to determine valid ranges.
+    valid_input : pandas.DataFrame
+        Valid predictor values used to construct the invalid input.
+
+    Returns
+    -------
+    None
+        This test passes if a ``ValueError`` is raised when a predictor
+        contains a NaN value.
+    """
     invalid_input = valid_input.copy()
     invalid_input.loc[0, "frequency"] = np.nan
 
@@ -176,13 +280,27 @@ def test_negative_physical_input_is_rejected(
     airfoil_data,
     valid_input,
 ):
-    """Verify that negative physical predictor values are rejected."""
+    """Test that non-positive physical predictor values are rejected.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Reference experimental dataset used to determine valid ranges.
+    valid_input : pandas.DataFrame
+        Valid predictor values used to construct the invalid input.
+
+    Returns
+    -------
+    None
+        This test passes if a ``ValueError`` is raised when a physical
+        predictor has a non-positive value.
+    """
     invalid_input = valid_input.copy()
     invalid_input.loc[0, "frequency"] = -100.0
 
     with pytest.raises(
         ValueError,
-        match="cannot be negative",
+        match="must be greater than zero",
     ):
         validate_airfoil_input(
             invalid_input,
@@ -194,7 +312,21 @@ def test_out_of_range_input_is_rejected(
     airfoil_data,
     valid_input,
 ):
-    """Verify that inputs outside the experimental domain are rejected."""
+    """Test that inputs outside the experimental domain are rejected.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Reference experimental dataset used to determine valid ranges.
+    valid_input : pandas.DataFrame
+        Valid predictor values used to construct the invalid input.
+
+    Returns
+    -------
+    None
+        This test passes if a ``ValueError`` is raised when a predictor
+        falls outside its observed experimental range.
+    """
     invalid_input = valid_input.copy()
     invalid_input.loc[0, "frequency"] = 25000.0
 
@@ -213,7 +345,19 @@ def test_out_of_range_input_is_rejected(
 # ---------------------------------------------------------------------
 
 def test_loco_withholds_each_chord_once(airfoil_data):
-    """Verify that LOCO validation evaluates every chord exactly once."""
+    """Test that LOCO validation evaluates every chord exactly once.
+
+    Parameters
+    ----------
+    airfoil_data : pandas.DataFrame
+        Airfoil Self-Noise dataset supplied by the pytest fixture.
+
+    Returns
+    -------
+    None
+        This test passes if every unique chord length is withheld
+        exactly once during leave-one-chord-out validation.
+    """
     X = airfoil_data[FEATURE_COLUMNS]
     y = airfoil_data["sound_pressure_level"]
 
@@ -242,3 +386,43 @@ def test_loco_withholds_each_chord_once(airfoil_data):
         evaluated_chords,
         expected_chords,
     )
+
+
+# ---------------------------------------------------------------------
+# Computational utility tests
+# ---------------------------------------------------------------------
+
+def test_median_ms_returns_non_negative_time():
+    """Test that ``median_ms`` returns a non-negative execution time.
+
+    Returns
+    -------
+    None
+        This test passes if the measured median execution time is
+        greater than or equal to zero milliseconds.
+    """
+    result = median_ms(
+        lambda: None,
+        repeats=3,
+    )
+
+    assert result >= 0
+
+
+def test_median_ms_rejects_invalid_repeats():
+    """Test that ``median_ms`` rejects an invalid repeat count.
+
+    Returns
+    -------
+    None
+        This test passes if ``median_ms`` raises a ``ValueError`` when
+        the requested number of repeats is less than one.
+    """
+    with pytest.raises(
+        ValueError,
+        match="repeats must be at least 1",
+    ):
+        median_ms(
+            lambda: None,
+            repeats=0,
+        )
