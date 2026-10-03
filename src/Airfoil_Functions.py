@@ -6,6 +6,7 @@ input checking in the airfoil self-noise machine-learning workflow.
 
 import numpy as np
 import pandas as pd
+import time
 
 from sklearn.base import clone
 from sklearn.metrics import (
