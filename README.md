@@ -95,9 +95,11 @@ The analysis was developed using **Google Colab**.
 
 ## Running the Analysis
 The main project notebook can be opened and executed using Google Colab or another Jupyter-compatible Python environment.
-The dataset must be available at:
 
-`data/airfoil_self_noise.dat`
+The main features can be found at:
+- **Main notebook:** `notebooks/Airfoil_Self_Noise_Prediction.ipynb`
+- **Source documentation (HTML):**  `docs/index.html`
+- **Data:** the notebook loads `airfoil_self_noise.dat` from this repository on GitHub and falls back to the local copy in `data/`.
 
 Run the notebook cells sequentially from top to bottom to reproduce the analysis, model development, validation, model comparison, and final evaluation.
 
